@@ -106,12 +106,12 @@ func Load() *Config {
 		QdrantGRPCPort:       envInt("QDRANT_GRPC_PORT", 6334),
 		QdrantCollectionName: envStr("QDRANT_COLLECTION_NAME", "paper_chunks"),
 
-		// Embedding — same env vars as Auto-Scholar
+		// Embedding — dedicated vars with LLM fallback
 		EmbeddingModel:      envStr("EMBEDDING_MODEL", "text-embedding-3-small"),
 		EmbeddingDimensions: envInt("EMBEDDING_DIMENSIONS", 1536),
 		EmbeddingBatchSize:  envInt("EMBEDDING_BATCH_SIZE", 100),
-		EmbeddingAPIKey:     envStr("LLM_API_KEY", ""),
-		EmbeddingBaseURL:    envStr("LLM_BASE_URL", "https://api.openai.com/v1"),
+		EmbeddingAPIKey:     envStrFallback("EMBEDDING_API_KEY", "LLM_API_KEY", ""),
+		EmbeddingBaseURL:    envStrFallback("EMBEDDING_BASE_URL", "LLM_BASE_URL", "https://api.openai.com/v1"),
 
 		// Chunking — same constants as Auto-Scholar
 		ChunkSizeTokens:    envInt("CHUNK_SIZE_TOKENS", 512),
@@ -153,6 +153,16 @@ func (c *Config) PDFMaxSizeBytes() int64 {
 
 func envStr(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func envStrFallback(primary, secondary, fallback string) string {
+	if v := os.Getenv(primary); v != "" {
+		return v
+	}
+	if v := os.Getenv(secondary); v != "" {
 		return v
 	}
 	return fallback

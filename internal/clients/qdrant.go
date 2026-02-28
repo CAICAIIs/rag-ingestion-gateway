@@ -55,7 +55,7 @@ func (q *QdrantClient) UpsertPoints(ctx context.Context, paperID string, chunks 
 			Payload: map[string]*pb.Value{
 				"paper_id":    {Kind: &pb.Value_StringValue{StringValue: paperID}},
 				"chunk_index": {Kind: &pb.Value_IntegerValue{IntegerValue: int64(chunk.Index)}},
-				"text":        {Kind: &pb.Value_StringValue{StringValue: chunk.Text}},
+				"chunk_text":  {Kind: &pb.Value_StringValue{StringValue: chunk.Text}},
 				"token_count": {Kind: &pb.Value_IntegerValue{IntegerValue: int64(chunk.TokenCount)}},
 			},
 		}
