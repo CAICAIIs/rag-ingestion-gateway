@@ -3,6 +3,7 @@ package pipeline
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 type Chunk struct {
@@ -38,6 +39,7 @@ func (c *Chunker) Split(text string) []Chunk {
 		if end > len(text) {
 			end = len(text)
 		}
+		end = alignRuneBoundary(text, end)
 
 		if end < len(text) {
 			boundary := findSentenceBoundary(text, end)
@@ -60,6 +62,7 @@ func (c *Chunker) Split(text string) []Chunk {
 		if next <= start {
 			next = end
 		}
+		next = alignRuneBoundary(text, next)
 		start = next
 
 		if end >= len(text) {
@@ -70,20 +73,39 @@ func (c *Chunker) Split(text string) []Chunk {
 	return chunks
 }
 
+func alignRuneBoundary(text string, pos int) int {
+	if pos >= len(text) {
+		return len(text)
+	}
+	for pos > 0 && !utf8.RuneStart(text[pos]) {
+		pos--
+	}
+	return pos
+}
+
 func findSentenceBoundary(text string, pos int) int {
 	searchStart := pos - 200
 	if searchStart < 0 {
 		searchStart = 0
 	}
 	best := 0
-	for i := pos; i >= searchStart; i-- {
-		ch := rune(text[i])
-		if ch == '.' || ch == '!' || ch == '?' || ch == '\n' {
-			if i+1 < len(text) && (text[i+1] == ' ' || text[i+1] == '\n') {
-				return i + 1
+	for i := pos; i >= searchStart; {
+		r, size := utf8.DecodeLastRuneInString(text[:i])
+		if size == 0 {
+			break
+		}
+		i -= size
+		if r == '.' || r == '!' || r == '?' || r == '\n' ||
+			r == '\u3002' || r == '\uff01' || r == '\uff1f' {
+			nextPos := i + size
+			if nextPos < len(text) {
+				nr, _ := utf8.DecodeRuneInString(text[nextPos:])
+				if nr == ' ' || nr == '\n' {
+					return nextPos
+				}
 			}
 			if best == 0 {
-				best = i + 1
+				best = nextPos
 			}
 		}
 	}

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/ledongthuc/pdf"
@@ -197,9 +198,27 @@ func extractTextFromPDF(data []byte) (string, error) {
 		buf.WriteString(text)
 		buf.WriteString("\n")
 	}
-	result := buf.String()
+	result := sanitizeUTF8(buf.String())
 	if len(strings.TrimSpace(result)) == 0 {
 		return "", fmt.Errorf("no text extracted from PDF (%d pages)", r.NumPage())
 	}
 	return result, nil
+}
+
+func sanitizeUTF8(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+	var buf strings.Builder
+	buf.Grow(len(s))
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if r == utf8.RuneError && size <= 1 {
+			i++
+			continue
+		}
+		buf.WriteRune(r)
+		i += size
+	}
+	return buf.String()
 }
