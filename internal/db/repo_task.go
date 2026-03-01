@@ -332,6 +332,25 @@ func (r *TaskRepo) SaveArtifact(ctx context.Context, taskID uuid.UUID, kind, ref
 	return nil
 }
 
+// FindCompletedByPaperID returns the task ID of a completed task for the given paper_id,
+// or uuid.Nil if none exists. Used for deduplication in batch ingest.
+func (r *TaskRepo) FindCompletedByPaperID(ctx context.Context, paperID string) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := r.pool.QueryRow(ctx,
+		`SELECT id FROM ingestion_tasks
+		 WHERE paper_id = $1 AND state = 'completed'
+		 ORDER BY created_at DESC LIMIT 1`,
+		paperID,
+	).Scan(&id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, nil
+		}
+		return uuid.Nil, fmt.Errorf("find completed by paper_id: %w", err)
+	}
+	return id, nil
+}
+
 // scanTasks scans multiple rows into a Task slice.
 func scanTasks(rows pgx.Rows) ([]Task, error) {
 	var tasks []Task

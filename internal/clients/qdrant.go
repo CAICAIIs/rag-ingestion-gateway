@@ -61,7 +61,9 @@ func (q *QdrantClient) UpsertPoints(ctx context.Context, paperID string, chunks 
 		}
 	}
 
-	wait := true
+	// Async write: auto-scholar's claim_verifier polls via _wait_for_vectors,
+	// so we don't need to block on index completion here.
+	wait := false
 	_, err := q.points.Upsert(ctx, &pb.UpsertPoints{
 		CollectionName: q.collection,
 		Wait:           &wait,

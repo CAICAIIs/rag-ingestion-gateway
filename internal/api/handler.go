@@ -122,6 +122,20 @@ func (h *Handler) HandleBatchIngest(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		// Dedup: skip if this paper_id already has a completed task.
+		if existingID, err := h.repo.FindCompletedByPaperID(r.Context(), item.PaperID); err != nil {
+			h.logger.Error("dedup check failed", "error", err, "paper_id", item.PaperID)
+			// Non-fatal: fall through to create a new task.
+		} else if existingID != uuid.Nil {
+			h.logger.Info("skipping duplicate paper", "paper_id", item.PaperID, "existing_task", existingID)
+			results = append(results, BatchItemResponse{
+				PaperID: item.PaperID,
+				TaskID:  existingID.String(),
+				Status:  http.StatusOK,
+			})
+			continue
+		}
+
 		taskID, err := h.repo.CreateTask(r.Context(), item.PaperID, item.SourceURL, "", item.CallbackURL, 3)
 		if err != nil {
 			results = append(results, BatchItemResponse{

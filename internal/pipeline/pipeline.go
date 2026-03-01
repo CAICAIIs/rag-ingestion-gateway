@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -28,6 +29,10 @@ type Pipeline struct {
 	bucket     string
 	httpClient *http.Client
 	logger     *slog.Logger
+
+	// chunkCache holds chunk results from Chunk() for reuse in Embed(),
+	// avoiding a redundant PDF download + parse. Keyed by task ID string.
+	chunkCache sync.Map // map[string][]Chunk
 }
 
 func NewPipeline(
@@ -123,28 +128,40 @@ func (p *Pipeline) Chunk(ctx context.Context, task db.Task) error {
 		}
 	}
 
+	// Cache chunks for Embed() to avoid redundant PDF download + parse.
+	p.chunkCache.Store(task.ID.String(), chunks)
+
 	p.logger.Info("chunked PDF", "task_id", task.ID, "chunks", len(chunks))
 	return nil
 }
 
 func (p *Pipeline) Embed(ctx context.Context, task db.Task) error {
 	p.logger.Info("embed: start", "task_id", task.ID, "pdf_key", task.PDFObjectKey)
-	obj, err := p.store.GetObject(ctx, p.bucket, task.PDFObjectKey)
-	if err != nil {
-		return fmt.Errorf("get PDF from minio: %w", err)
-	}
-	defer obj.Close()
 
-	pdfBytes, err := io.ReadAll(obj)
-	if err != nil {
-		return fmt.Errorf("read PDF: %w", err)
-	}
+	// Try cached chunks from Chunk() first; fall back to PDF re-read on miss (e.g. worker restart).
+	var chunks []Chunk
+	if cached, ok := p.chunkCache.LoadAndDelete(task.ID.String()); ok {
+		chunks = cached.([]Chunk)
+		p.logger.Info("embed: using cached chunks", "task_id", task.ID, "chunks", len(chunks))
+	} else {
+		p.logger.Warn("embed: cache miss, re-reading PDF", "task_id", task.ID)
+		obj, err := p.store.GetObject(ctx, p.bucket, task.PDFObjectKey)
+		if err != nil {
+			return fmt.Errorf("get PDF from minio: %w", err)
+		}
+		defer obj.Close()
 
-	text, err := extractTextFromPDF(pdfBytes)
-	if err != nil {
-		return fmt.Errorf("extract text from PDF: %w", err)
+		pdfBytes, err := io.ReadAll(obj)
+		if err != nil {
+			return fmt.Errorf("read PDF: %w", err)
+		}
+
+		text, err := extractTextFromPDF(pdfBytes)
+		if err != nil {
+			return fmt.Errorf("extract text from PDF: %w", err)
+		}
+		chunks = p.chunker.Split(text)
 	}
-	chunks := p.chunker.Split(text)
 	p.logger.Info("embed: chunks ready", "task_id", task.ID, "chunks", len(chunks))
 
 	texts := make([]string, len(chunks))
