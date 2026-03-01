@@ -109,6 +109,14 @@ func (w *Worker) runPipeline(ctx context.Context, log *slog.Logger, task db.Task
 			if err := step.fn(ctx, task); err != nil {
 				return fmt.Errorf("step %s: %w", step.to, err)
 			}
+			// Refresh task after download to pick up persisted PDFObjectKey
+			if step.to == StateDownloading {
+				updated, err := w.repo.GetTask(ctx, task.ID)
+				if err != nil {
+					return fmt.Errorf("refresh task after download: %w", err)
+				}
+				task = *updated
+			}
 		}
 	}
 

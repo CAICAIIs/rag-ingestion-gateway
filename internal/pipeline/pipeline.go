@@ -1,14 +1,17 @@
 package pipeline
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ledongthuc/pdf"
 
 	"github.com/CAICAIIs/rag-ingestion-gateway/internal/clients"
 	"github.com/CAICAIIs/rag-ingestion-gateway/internal/db"
@@ -76,11 +79,16 @@ func (p *Pipeline) Download(ctx context.Context, task db.Task) error {
 		return fmt.Errorf("upload to minio: %w", err)
 	}
 
+	if err := p.repo.UpdatePDFObjectKey(ctx, task.ID, objectKey); err != nil {
+		return fmt.Errorf("persist pdf_object_key: %w", err)
+	}
+
 	p.logger.Info("downloaded PDF", "task_id", task.ID, "object_key", objectKey)
 	return nil
 }
 
 func (p *Pipeline) Chunk(ctx context.Context, task db.Task) error {
+	p.logger.Info("chunk: start", "task_id", task.ID, "pdf_key", task.PDFObjectKey)
 	if task.PDFObjectKey == "" {
 		return fmt.Errorf("no PDF object key for task %s", task.ID)
 	}
@@ -95,9 +103,16 @@ func (p *Pipeline) Chunk(ctx context.Context, task db.Task) error {
 	if err != nil {
 		return fmt.Errorf("read PDF: %w", err)
 	}
+	p.logger.Info("chunk: read PDF", "task_id", task.ID, "bytes", len(pdfBytes))
 
-	text := extractTextFromPDF(pdfBytes)
+	text, err := extractTextFromPDF(pdfBytes)
+	if err != nil {
+		return fmt.Errorf("extract text from PDF: %w", err)
+	}
+	p.logger.Info("chunk: extracted text", "task_id", task.ID, "chars", len(text))
+
 	chunks := p.chunker.Split(text)
+	p.logger.Info("chunk: split done", "task_id", task.ID, "chunks", len(chunks))
 
 	for i, chunk := range chunks {
 		refKey := fmt.Sprintf("%s/chunk_%04d", task.PDFObjectKey, i)
@@ -112,6 +127,7 @@ func (p *Pipeline) Chunk(ctx context.Context, task db.Task) error {
 }
 
 func (p *Pipeline) Embed(ctx context.Context, task db.Task) error {
+	p.logger.Info("embed: start", "task_id", task.ID, "pdf_key", task.PDFObjectKey)
 	obj, err := p.store.GetObject(ctx, p.bucket, task.PDFObjectKey)
 	if err != nil {
 		return fmt.Errorf("get PDF from minio: %w", err)
@@ -123,24 +139,31 @@ func (p *Pipeline) Embed(ctx context.Context, task db.Task) error {
 		return fmt.Errorf("read PDF: %w", err)
 	}
 
-	text := extractTextFromPDF(pdfBytes)
+	text, err := extractTextFromPDF(pdfBytes)
+	if err != nil {
+		return fmt.Errorf("extract text from PDF: %w", err)
+	}
 	chunks := p.chunker.Split(text)
+	p.logger.Info("embed: chunks ready", "task_id", task.ID, "chunks", len(chunks))
 
 	texts := make([]string, len(chunks))
 	for i, c := range chunks {
 		texts[i] = c.Text
 	}
 
+	p.logger.Info("embed: calling embedding API", "task_id", task.ID, "texts", len(texts))
 	embeddings, err := p.embedder.EmbedBatch(ctx, texts)
 	if err != nil {
 		return fmt.Errorf("embed batch: %w", err)
 	}
+	p.logger.Info("embed: got embeddings", "task_id", task.ID, "vectors", len(embeddings))
 
 	payloads := make([]clients.ChunkPayload, len(chunks))
 	for i, c := range chunks {
 		payloads[i] = clients.ChunkPayload{Text: c.Text, Index: c.Index, TokenCount: c.TokenCount}
 	}
 
+	p.logger.Info("embed: upserting to qdrant", "task_id", task.ID, "points", len(payloads))
 	if err := p.qdrant.UpsertPoints(ctx, task.PaperID, payloads, embeddings); err != nil {
 		return fmt.Errorf("upsert to qdrant: %w", err)
 	}
@@ -156,8 +179,27 @@ func (p *Pipeline) Embed(ctx context.Context, task db.Task) error {
 	return nil
 }
 
-func extractTextFromPDF(data []byte) string {
-	// Placeholder: in production, use pdfcpu or call Python fallback.
-	// For now, treat the bytes as raw text (will be replaced with real extraction).
-	return string(data)
+func extractTextFromPDF(data []byte) (string, error) {
+	r, err := pdf.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return "", fmt.Errorf("open PDF: %w", err)
+	}
+	var buf strings.Builder
+	for i := 1; i <= r.NumPage(); i++ {
+		p := r.Page(i)
+		if p.V.IsNull() {
+			continue
+		}
+		text, err := p.GetPlainText(nil)
+		if err != nil {
+			continue
+		}
+		buf.WriteString(text)
+		buf.WriteString("\n")
+	}
+	result := buf.String()
+	if len(strings.TrimSpace(result)) == 0 {
+		return "", fmt.Errorf("no text extracted from PDF (%d pages)", r.NumPage())
+	}
+	return result, nil
 }

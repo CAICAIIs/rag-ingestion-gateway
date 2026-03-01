@@ -50,6 +50,7 @@ type Config struct {
 	EmbeddingBatchSize  int
 	EmbeddingAPIKey     string
 	EmbeddingBaseURL    string
+	EmbeddingAPIType    string // "openai" (default) or "minimaxi"
 
 	// Chunking
 	ChunkSizeTokens    int
@@ -112,6 +113,7 @@ func Load() *Config {
 		EmbeddingBatchSize:  envInt("EMBEDDING_BATCH_SIZE", 100),
 		EmbeddingAPIKey:     envStrFallback("EMBEDDING_API_KEY", "LLM_API_KEY", ""),
 		EmbeddingBaseURL:    envStrFallback("EMBEDDING_BASE_URL", "LLM_BASE_URL", "https://api.openai.com/v1"),
+		EmbeddingAPIType:    envStr("EMBEDDING_API_TYPE", "openai"),
 
 		// Chunking — same constants as Auto-Scholar
 		ChunkSizeTokens:    envInt("CHUNK_SIZE_TOKENS", 512),

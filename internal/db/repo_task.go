@@ -304,6 +304,21 @@ func (r *TaskRepo) IncrementRetry(ctx context.Context, taskID uuid.UUID) (int, e
 	return count, nil
 }
 
+// UpdatePDFObjectKey sets the pdf_object_key after a successful download.
+func (r *TaskRepo) UpdatePDFObjectKey(ctx context.Context, taskID uuid.UUID, key string) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE ingestion_tasks SET pdf_object_key = $1 WHERE id = $2`,
+		key, taskID,
+	)
+	if err != nil {
+		return fmt.Errorf("update pdf_object_key: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrTaskNotFound
+	}
+	return nil
+}
+
 // SaveArtifact records a pipeline output artifact for a task.
 func (r *TaskRepo) SaveArtifact(ctx context.Context, taskID uuid.UUID, kind, refKey string, metadata []byte) error {
 	_, err := r.pool.Exec(ctx,

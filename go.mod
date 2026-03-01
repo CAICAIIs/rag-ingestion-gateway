@@ -1,13 +1,13 @@
 module github.com/CAICAIIs/rag-ingestion-gateway
 
-go 1.22.2
+go 1.24.1
 
 require (
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.2
+	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/minio/minio-go/v7 v7.0.82
-	github.com/pkoukk/tiktoken-go v0.1.7
 	github.com/qdrant/go-client v1.12.0
 	github.com/redis/go-redis/v9 v9.7.0
 	google.golang.org/grpc v1.69.2
@@ -16,7 +16,6 @@ require (
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
-	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/goccy/go-json v0.10.4 // indirect

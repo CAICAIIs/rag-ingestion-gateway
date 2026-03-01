@@ -78,7 +78,7 @@ func run(cfg *config.Config, log *slog.Logger) error {
 
 	embedder := pipeline.NewEmbedder(
 		cfg.EmbeddingAPIKey, cfg.EmbeddingBaseURL, cfg.EmbeddingModel,
-		cfg.EmbeddingDimensions, cfg.EmbeddingBatchSize,
+		cfg.EmbeddingAPIType, cfg.EmbeddingDimensions, cfg.EmbeddingBatchSize,
 	)
 
 	pipe := pipeline.NewPipeline(store, repo, chunker, embedder, qdrantClient, cfg.BucketRaw, cfg.PDFDownloadTimeout, log)
