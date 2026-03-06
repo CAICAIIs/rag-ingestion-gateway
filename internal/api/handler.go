@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -198,8 +200,33 @@ func (h *Handler) HandleCancelTask(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleHealth(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
+	deps := map[string]string{
+		"postgres": "unknown",
+		"minio":    "unknown",
+	}
+	status := "ok"
+
+	if err := h.repo.Ping(ctx); err != nil {
+		deps["postgres"] = "error"
+		status = "degraded"
+		h.logger.Warn("health postgres check failed", "error", err)
+	} else {
+		deps["postgres"] = "ok"
+	}
+
+	if err := h.store.HealthCheck(ctx, h.bucket); err != nil {
+		deps["minio"] = "error"
+		status = "degraded"
+		h.logger.Warn("health minio check failed", "error", err)
+	} else {
+		deps["minio"] = "ok"
+	}
+
 	writeJSON(w, http.StatusOK, HealthResponse{
-		Status: "ok",
-		Deps:   map[string]string{"postgres": "ok", "minio": "ok", "redis": "ok", "qdrant": "ok"},
+		Status: status,
+		Deps:   deps,
 	})
 }

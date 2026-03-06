@@ -43,6 +43,15 @@ func (c *Client) EnsureBucket(ctx context.Context, bucket string) error {
 	return nil
 }
 
+// HealthCheck verifies storage connectivity and bucket visibility.
+func (c *Client) HealthCheck(ctx context.Context, bucket string) error {
+	_, err := c.mc.BucketExists(ctx, bucket)
+	if err != nil {
+		return fmt.Errorf("check bucket %s: %w", bucket, err)
+	}
+	return nil
+}
+
 // StreamUpload streams from src directly to MinIO using zero-copy streaming.
 // Returns the number of bytes written.
 func (c *Client) StreamUpload(ctx context.Context, bucket, key string, src io.Reader, contentType string) (int64, error) {

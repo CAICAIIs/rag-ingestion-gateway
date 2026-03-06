@@ -57,6 +57,11 @@ func NewTaskRepo(pool *pgxpool.Pool) *TaskRepo {
 	return &TaskRepo{pool: pool}
 }
 
+// Ping checks basic database connectivity.
+func (r *TaskRepo) Ping(ctx context.Context) error {
+	return r.pool.Ping(ctx)
+}
+
 // CreateTask inserts a new ingestion task and its initial state history record.
 func (r *TaskRepo) CreateTask(ctx context.Context, paperID, sourceURL, pdfObjectKey, callbackURL string, maxRetries int) (uuid.UUID, error) {
 	tx, err := r.pool.Begin(ctx)
